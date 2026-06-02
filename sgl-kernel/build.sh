@@ -56,8 +56,8 @@ echo "Output:         ${DIST_DIR}/"
 echo "Buildx cache:   ${BUILDX_CACHE_DIR}"
 echo "ccache dir:     ${CCACHE_HOST_DIR}"
 echo "Builder:        ${BUILDER_NAME}"
-echo "BUILD_JOBS:     ${BUILD_JOBS:-auto}"
-echo "NVCC_THREADS:   ${NVCC_THREADS:-32}"
+echo "BUILD_JOBS:     ${BUILD_JOBS:-1} (default 1 for memory efficiency; set to 0 for auto high)"
+echo "NVCC_THREADS:   ${NVCC_THREADS:-1}"
 echo "USE_CCACHE:     ${USE_CCACHE:-1}"
 echo "RESET_BUILDER:  ${RESET_BUILDER:-0}"
 echo "----------------------------------------"
@@ -94,8 +94,8 @@ echo "Deps image ready: ${DEPS_TAG}"
 # ---- Step 2: Build wheel with host-mounted ccache ----
 # This allows ccache to persist on the host filesystem across builds.
 CCACHE_FLAG="${USE_CCACHE:-1}"
-BUILD_JOBS_FLAG="${BUILD_JOBS:-0}"
-NVCC_THREADS_FLAG="${NVCC_THREADS:-32}"
+BUILD_JOBS_FLAG="${BUILD_JOBS:-1}"
+NVCC_THREADS_FLAG="${NVCC_THREADS:-1}"
 
 docker run --rm \
   --network=host \
@@ -134,6 +134,7 @@ if [ "'"${ARCH}"'" = "aarch64" ]; then
 elif [ "${BUILD_JOBS}" -gt 0 ] 2>/dev/null; then
   export CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS}
 else
+  # BUILD_JOBS=0 (or unset before our default) means auto high; current default is 1 (memory-saving)
   export CMAKE_BUILD_PARALLEL_LEVEL=$(echo "$(( $(nproc) * 2 / 3 )) 64" | awk "{print (\$1 < \$2) ? \$1 : \$2}")
 fi
 

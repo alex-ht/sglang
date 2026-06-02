@@ -120,10 +120,10 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     set(DEFAULT_ENABLE_BELOW_SM90 OFF)
     message(STATUS "For aarch64, disable gencode below SM90 by default")
 else()
-    set(DEFAULT_ENABLE_BELOW_SM90 ON)
+    set(DEFAULT_ENABLE_BELOW_SM90 OFF)
 endif()
 
-option(ENABLE_BELOW_SM90 "Enable gencode below SM90" ${DEFAULT_ENABLE_BELOW_SM90})
+option(ENABLE_BELOW_SM90 "Enable gencode below SM90 (for pre-Hopper GPUs; default OFF for H100-only / minimal memory build)" ${DEFAULT_ENABLE_BELOW_SM90})
 
 include_directories(
     ${PROJECT_SOURCE_DIR}/include
@@ -150,7 +150,7 @@ set(SGL_KERNEL_CUDA_FLAGS
 
     # The following flag leads to the CMAKE_BUILD_PARALLEL_LEVEL breaking,
     # it triggers OOM with low memory host. Extract the threads number to
-    # option named SGL_KERNEL_COMPILE_THREADS, default value 32.
+    # option named SGL_KERNEL_COMPILE_THREADS, default value 1 (most memory-efficient).
     # "--threads=32"
 
     # Supress warnings
@@ -168,7 +168,7 @@ set(SGL_KERNEL_CUDA_FLAGS
     # "--ptxas-options=--verbose,--register-usage-level=10,--warn-on-local-memory-usage"
 )
 
-set(SGL_KERNEL_COMPILE_THREADS 32 CACHE STRING "Set compilation threads, default 32")
+set(SGL_KERNEL_COMPILE_THREADS 1 CACHE STRING "Set NVCC --threads (internal parallelism per nvcc invocation), default 1 for minimal memory usage")
 
 # When SGL_KERNEL_COMPILE_THREADS value is less than 1, set it to 1
 if (NOT SGL_KERNEL_COMPILE_THREADS MATCHES "^[0-9]+$")
@@ -187,7 +187,8 @@ option(SGL_KERNEL_ENABLE_FP8              "Enable FP8"              ON)
 option(SGL_KERNEL_ENABLE_FP4              "Enable FP4"              OFF)
 option(SGL_KERNEL_ENABLE_FA3              "Enable FA3"              OFF)
 option(SGL_KERNEL_ENABLE_SM90A            "Enable SM90A"            OFF)
-option(SGL_KERNEL_ENABLE_SM100A           "Enable SM100A"           OFF)
+option(SGL_KERNEL_ENABLE_SM100A           "Enable SM100A (Blackwell gencodes and features; default OFF)"           OFF)
+option(SGL_KERNEL_BUILD_SM100_VARIANT "Build SM100+ variant (precise-math lib in sm100/ subdir). Default OFF to save build memory/time for H100-only. Auto-enabled if ENABLE_SM100A." OFF)
 
 if (SGL_KERNEL_ENABLE_BF16)
     list(APPEND SGL_KERNEL_CUDA_FLAGS
@@ -216,7 +217,7 @@ if (ENABLE_BELOW_SM90)
 
 endif()
 
-if ("${CUDA_VERSION}" VERSION_GREATER_EQUAL "12.8" OR SGL_KERNEL_ENABLE_SM100A)
+if (SGL_KERNEL_ENABLE_SM100A)
     list(APPEND SGL_KERNEL_CUDA_FLAGS
         "-gencode=arch=compute_100a,code=sm_100a"
         "-gencode=arch=compute_120a,code=sm_120a"
@@ -271,8 +272,6 @@ set(SOURCES
     "csrc/elementwise/pos_enc.cu"
     "csrc/elementwise/topk.cu"
     "csrc/expert_specialization/es_fp8_blockwise.cu"
-    "csrc/expert_specialization/es_sm100_mxfp8_blockscaled.cu"
-    "csrc/expert_specialization/es_sm100_mxfp8_blockscaled_group_quant.cu"
 
     "csrc/gemm/awq_kernel.cu"
     "csrc/gemm/bmm_fp8.cu"
@@ -325,6 +324,14 @@ set(SOURCES
     "${repo-flash-attention_SOURCE_DIR}/csrc/flash_attn/flash_sparse_api.cpp"
 )
 
+# Include SM100-specific expert specialization sources only when explicitly enabled (saves compile memory for H100-only builds)
+if (SGL_KERNEL_ENABLE_SM100A)
+    list(APPEND SOURCES
+        "csrc/expert_specialization/es_sm100_mxfp8_blockscaled.cu"
+        "csrc/expert_specialization/es_sm100_mxfp8_blockscaled_group_quant.cu"
+    )
+endif()
+
 set(INCLUDES
     ${repo-cutlass_SOURCE_DIR}/include
     ${repo-cutlass_SOURCE_DIR}/tools/util/include
@@ -351,18 +358,21 @@ set_target_properties(common_ops_sm90_build PROPERTIES
 )
 
 # =========================== Common SM100+ Build ============================= #
-# Build SM100+ library with precise math (same namespace, different directory)
-Python_add_library(common_ops_sm100_build MODULE USE_SABI ${SKBUILD_SABI_VERSION} WITH_SOABI ${SOURCES})
+# Build SM100+ library with precise math (same namespace, different directory).
+# Only built if SGL_KERNEL_BUILD_SM100_VARIANT or SGL_KERNEL_ENABLE_SM100A (default OFF to keep H100-only build memory-efficient).
+if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
+    Python_add_library(common_ops_sm100_build MODULE USE_SABI ${SKBUILD_SABI_VERSION} WITH_SOABI ${SOURCES})
 
-target_compile_options(common_ops_sm100_build PRIVATE
-    $<$<COMPILE_LANGUAGE:CUDA>:${SGL_KERNEL_CUDA_FLAGS}>
-)
-target_include_directories(common_ops_sm100_build PRIVATE ${INCLUDES})
-# Set output name and separate build directory to avoid conflicts
-set_target_properties(common_ops_sm100_build PROPERTIES
-    OUTPUT_NAME "common_ops"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sm100"
-)
+    target_compile_options(common_ops_sm100_build PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:${SGL_KERNEL_CUDA_FLAGS}>
+    )
+    target_include_directories(common_ops_sm100_build PRIVATE ${INCLUDES})
+    # Set output name and separate build directory to avoid conflicts
+    set_target_properties(common_ops_sm100_build PROPERTIES
+        OUTPUT_NAME "common_ops"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sm100"
+    )
+endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 execute_process(
@@ -390,7 +400,9 @@ add_subdirectory(
 )
 
 target_link_libraries(common_ops_sm90_build PRIVATE ${TORCH_LIBRARIES} c10 cuda cublas cublasLt mscclpp_static)
-target_link_libraries(common_ops_sm100_build PRIVATE ${TORCH_LIBRARIES} c10 cuda cublas cublasLt mscclpp_static)
+if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
+    target_link_libraries(common_ops_sm100_build PRIVATE ${TORCH_LIBRARIES} c10 cuda cublas cublasLt mscclpp_static)
+endif()
 
 # sparse flash attention
 target_compile_definitions(common_ops_sm90_build PRIVATE
@@ -398,17 +410,21 @@ target_compile_definitions(common_ops_sm90_build PRIVATE
     FLASHATTENTION_DISABLE_DROPOUT
     FLASHATTENTION_DISABLE_UNEVEN_K
 )
-target_compile_definitions(common_ops_sm100_build PRIVATE
-    FLASHATTENTION_DISABLE_BACKWARD
-    FLASHATTENTION_DISABLE_DROPOUT
-    FLASHATTENTION_DISABLE_UNEVEN_K
-)
+if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
+    target_compile_definitions(common_ops_sm100_build PRIVATE
+        FLASHATTENTION_DISABLE_BACKWARD
+        FLASHATTENTION_DISABLE_DROPOUT
+        FLASHATTENTION_DISABLE_UNEVEN_K
+    )
+endif()
 
 # Install to different subdirectories
 # CMake will find the built libraries in their respective LIBRARY_OUTPUT_DIRECTORY locations
 # and install them to the specified destinations
 install(TARGETS common_ops_sm90_build LIBRARY DESTINATION sgl_kernel/sm90)
-install(TARGETS common_ops_sm100_build LIBRARY DESTINATION sgl_kernel/sm100)
+if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
+    install(TARGETS common_ops_sm100_build LIBRARY DESTINATION sgl_kernel/sm100)
+endif()
 
 # ============================ Optional Install: FA3 ============================= #
 # set flash-attention sources file

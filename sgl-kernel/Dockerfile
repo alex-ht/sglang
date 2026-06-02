@@ -99,10 +99,10 @@ ARG ENABLE_BUILD_PROFILE
 ARG ARCH=x86_64
 ARG USE_CCACHE=1
 # Parallelism knobs (override via --build-arg)
-#   BUILD_JOBS: number of parallel compilation units (ninja -j)
-#   NVCC_THREADS: per-compilation-unit NVCC --threads (multi-arch PTXAS)
-ARG BUILD_JOBS=0
-ARG NVCC_THREADS=32
+#   BUILD_JOBS: number of parallel compilation units (ninja -j). Default 1 for minimal memory use.
+#   NVCC_THREADS: per-compilation-unit NVCC --threads (multi-arch PTXAS). Default 1 for minimal memory use.
+ARG BUILD_JOBS=1
+ARG NVCC_THREADS=1
 
 RUN --mount=type=cache,id=sgl-kernel-ccache,target=/ccache \
     --mount=type=cache,id=sgl-kernel-pip,target=/root/.cache/pip \

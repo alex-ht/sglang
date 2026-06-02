@@ -34,14 +34,27 @@ make build
 
 ### Limit build resource usage (CPU / parallelism)
 
-By default, `make build` uses all available CPU cores. You can override build parallelism and NVCC compile threads:
+By default, `make build` (and wheel builds) uses the most memory-efficient settings:
+- 1 parallel job (`MAX_JOBS=1`, `CMAKE_BUILD_PARALLEL_LEVEL=1`)
+- `SGL_KERNEL_COMPILE_THREADS=1` (NVCC --threads)
+- Only H100/Hopper (SM90 + SM90a) gencodes; no pre-Hopper or Blackwell unless you opt in.
+
+This makes default compilation the least memory hungry.
+
+To build faster when you have sufficient host memory:
 
 ```bash
-# Limit parallel jobs (controls both make and cmake parallelism)
-make build MAX_JOBS=2
+# Use more parallelism
+make build MAX_JOBS=8
 
-# Additionally limit NVCC internal threads (reduces CPU and peak memory)
-make build MAX_JOBS=2 CMAKE_ARGS="-DSGL_KERNEL_COMPILE_THREADS=1"
+# Also raise NVCC threads (each nvcc can use more cores internally)
+make build MAX_JOBS=8 CMAKE_ARGS="-DSGL_KERNEL_COMPILE_THREADS=4"
+
+# To also enable support for older GPUs (sm80/sm89 etc):
+make build CMAKE_ARGS="-DENABLE_BELOW_SM90=ON"
+
+# To enable Blackwell (SM100+) support (will build extra variant + gencodes):
+make build CMAKE_ARGS="-DSGL_KERNEL_ENABLE_SM100A=ON -DSGL_KERNEL_BUILD_SM100_VARIANT=ON"
 ```
 
 ## Contribution
