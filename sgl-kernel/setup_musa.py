@@ -108,10 +108,11 @@ if mtgpu_target not in ["mp_22", "mp_31"]:
     )
     sys.exit(1)
 
+opt_level = os.environ.get("SGL_KERNEL_OPT_LEVEL", "3")
 mcc_flags = [
     "-DNDEBUG",
     f"-DOPERATOR_NAMESPACE={operator_namespace}",
-    "-O3",
+    f"-O{opt_level}",
     "-fPIC",
     "-std=c++17",
     f"--cuda-gpu-arch={mtgpu_target}",

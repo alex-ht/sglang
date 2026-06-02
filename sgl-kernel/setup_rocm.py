@@ -57,7 +57,8 @@ sources = [
     "csrc/elementwise/pos_enc.cu",
 ]
 
-cxx_flags = ["-O3"]
+opt_level = os.environ.get("SGL_KERNEL_OPT_LEVEL", "3")
+cxx_flags = [f"-O{opt_level}"]
 libraries = ["hiprtc", "amdhip64", "c10", "torch", "torch_python"]
 extra_link_args = ["-Wl,-rpath,$ORIGIN/../../torch/lib", f"-L/usr/lib/{arch}-linux-gnu"]
 
@@ -91,7 +92,7 @@ topk_dynamic_smem_bytes = 48 * 1024 if amdgpu_target == "gfx942" else 32 * 1024 
 hipcc_flags = [
     "-DNDEBUG",
     f"-DOPERATOR_NAMESPACE={operator_namespace}",
-    "-O3",
+    f"-O{opt_level}",
     "-Xcompiler",
     "-fPIC",
     "-std=c++17",

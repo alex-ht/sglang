@@ -18,7 +18,22 @@ find_package(Python COMPONENTS Interpreter Development.Module ${SKBUILD_SABI_COM
 
 # CXX
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+
+# Optimization level. Default -O3 for best performance.
+# You can override with e.g. -DSGL_KERNEL_OPT_LEVEL=s to optimize for size (on host code).
+# Note: for CUDA, nvcc -O only accepts numeric levels; -Os on host compiler part
+# can be additionally forced via -DCMAKE_CUDA_FLAGS="-Xcompiler -Os".
+set(SGL_KERNEL_OPT_LEVEL "3" CACHE STRING "Optimization level for -O (3, 2, s, g, 0, ...)")
+if(NOT CMAKE_CXX_FLAGS MATCHES "-O[0-9sg]")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O${SGL_KERNEL_OPT_LEVEL}")
+endif()
+
+# nvcc top-level -O flag only supports numbers (0-3). 's'/'g' map to 2 for device/host balance.
+if(SGL_KERNEL_OPT_LEVEL MATCHES "^[0-3]$")
+    set(_SGL_NVCC_OPT_LEVEL "${SGL_KERNEL_OPT_LEVEL}")
+else()
+    set(_SGL_NVCC_OPT_LEVEL "2")
+endif()
 
 # CUDA
 enable_language(CUDA)
@@ -133,7 +148,7 @@ include_directories(
 set(SGL_KERNEL_CUDA_FLAGS
     "-DNDEBUG"
     "-DOPERATOR_NAMESPACE=sgl-kernel"
-    "-O3"
+    "-O${_SGL_NVCC_OPT_LEVEL}"
     "-Xcompiler"
     "-fPIC"
     "-gencode=arch=compute_90,code=sm_90"
@@ -433,7 +448,7 @@ if (SGL_KERNEL_ENABLE_FA3)
     set(SGL_FLASH_KERNEL_CUDA_FLAGS
         "-DNDEBUG"
         "-DOPERATOR_NAMESPACE=sgl-kernel"
-        "-O3"
+        "-O${_SGL_NVCC_OPT_LEVEL}"
         "-Xcompiler"
         "-fPIC"
         "-gencode=arch=compute_90a,code=sm_90a"

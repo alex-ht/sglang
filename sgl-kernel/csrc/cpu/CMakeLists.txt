@@ -5,6 +5,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Support overriding optimization level (e.g. via CMAKE_ARGS="-DSGL_KERNEL_OPT_LEVEL=s")
+set(SGL_KERNEL_OPT_LEVEL "3" CACHE STRING "Optimization level for -O (3, 2, s, g, 0, ...)")
+if(NOT CMAKE_CXX_FLAGS MATCHES "-O[0-9sg]")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O${SGL_KERNEL_OPT_LEVEL}")
+endif()
+
 find_package(Python COMPONENTS Interpreter Development.Module ${SKBUILD_SABI_COMPONENT} REQUIRED)
 
 execute_process(
@@ -85,7 +91,6 @@ if("$ENV{SGLANG_CPU_FP8_CVT_FTZ}" STREQUAL "1")
 endif()
 
 add_compile_options(
-    -O3
     -Wno-unknown-pragmas
     -march=native
     -fopenmp

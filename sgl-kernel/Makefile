@@ -6,7 +6,7 @@
 # Default is deliberately conservative (1 job) to be the most memory-efficient for compilation.
 # H100-only by default (no pre-Hopper or Blackwell gencodes unless explicitly enabled).
 # Override for faster builds if you have lots of host RAM:
-#   make build MAX_JOBS=8 CMAKE_BUILD_PARALLEL_LEVEL=8 CMAKE_ARGS="-DSGL_KERNEL_COMPILE_THREADS=4"
+#   make build MAX_JOBS=8 CMAKE_BUILD_PARALLEL_LEVEL=8 CMAKE_ARGS="-DSGL_KERNEL_COMPILE_THREADS=4 -DSGL_KERNEL_OPT_LEVEL=s"
 NPROC ?= $(shell nproc 2>/dev/null || echo 1)
 MAX_JOBS ?= 1
 CMAKE_BUILD_PARALLEL_LEVEL ?= $(MAX_JOBS)
