@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Support overriding optimization level (e.g. via CMAKE_ARGS="-DSGL_KERNEL_OPT_LEVEL=s")
-set(SGL_KERNEL_OPT_LEVEL "3" CACHE STRING "Optimization level for -O (3, 2, s, g, 0, ...)")
+set(SGL_KERNEL_OPT_LEVEL "1" CACHE STRING "Optimization level for -O (3, 2, s, g, 0, ...). Default 1 for lower compile memory / smaller binaries.")
 if(NOT CMAKE_CXX_FLAGS MATCHES "-O[0-9sg]")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O${SGL_KERNEL_OPT_LEVEL}")
 endif()

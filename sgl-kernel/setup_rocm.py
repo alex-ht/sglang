@@ -57,7 +57,7 @@ sources = [
     "csrc/elementwise/pos_enc.cu",
 ]
 
-opt_level = os.environ.get("SGL_KERNEL_OPT_LEVEL", "3")
+opt_level = os.environ.get("SGL_KERNEL_OPT_LEVEL", "1")
 cxx_flags = [f"-O{opt_level}"]
 libraries = ["hiprtc", "amdhip64", "c10", "torch", "torch_python"]
 extra_link_args = ["-Wl,-rpath,$ORIGIN/../../torch/lib", f"-L/usr/lib/{arch}-linux-gnu"]

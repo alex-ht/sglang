@@ -23,7 +23,7 @@ set(CMAKE_CXX_STANDARD 17)
 # You can override with e.g. -DSGL_KERNEL_OPT_LEVEL=s to optimize for size (on host code).
 # Note: for CUDA, nvcc -O only accepts numeric levels; -Os on host compiler part
 # can be additionally forced via -DCMAKE_CUDA_FLAGS="-Xcompiler -Os".
-set(SGL_KERNEL_OPT_LEVEL "3" CACHE STRING "Optimization level for -O (3, 2, s, g, 0, ...)")
+set(SGL_KERNEL_OPT_LEVEL "1" CACHE STRING "Optimization level for -O (3, 2, s, g, 0, ...). Default changed to 1 for lower compile memory usage and smaller binaries (nvcc only accepts numeric levels).")
 if(NOT CMAKE_CXX_FLAGS MATCHES "-O[0-9sg]")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O${SGL_KERNEL_OPT_LEVEL}")
 endif()

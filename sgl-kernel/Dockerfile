@@ -98,9 +98,10 @@ ARG ENABLE_CMAKE_PROFILE
 ARG ENABLE_BUILD_PROFILE
 ARG ARCH=x86_64
 ARG USE_CCACHE=1
-# Parallelism knobs (override via --build-arg)
+# Parallelism + opt knobs (override via --build-arg)
 #   BUILD_JOBS: number of parallel compilation units (ninja -j). Default 1 for minimal memory use.
 #   NVCC_THREADS: per-compilation-unit NVCC --threads (multi-arch PTXAS). Default 1 for minimal memory use.
+#   Note: SGL_KERNEL_OPT_LEVEL defaults to "1" (-O1) in CMake for lowest compile memory (nvcc only accepts numeric).
 ARG BUILD_JOBS=1
 ARG NVCC_THREADS=1
 

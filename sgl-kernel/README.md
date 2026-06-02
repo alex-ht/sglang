@@ -37,6 +37,7 @@ make build
 By default, `make build` (and wheel builds) uses the most memory-efficient settings:
 - 1 parallel job (`MAX_JOBS=1`, `CMAKE_BUILD_PARALLEL_LEVEL=1`)
 - `SGL_KERNEL_COMPILE_THREADS=1` (NVCC --threads)
+- Optimization level `-O1` (via `SGL_KERNEL_OPT_LEVEL=1`; nvcc only accepts numeric levels)
 - Only H100/Hopper (SM90 + SM90a) gencodes; no pre-Hopper or Blackwell unless you opt in.
 
 This makes default compilation the least memory hungry.
@@ -56,8 +57,8 @@ make build CMAKE_ARGS="-DENABLE_BELOW_SM90=ON"
 # To enable Blackwell (SM100+) support (will build extra variant + gencodes):
 make build CMAKE_ARGS="-DSGL_KERNEL_ENABLE_SM100A=ON -DSGL_KERNEL_BUILD_SM100_VARIANT=ON"
 
-# Use -Os (optimize for size) on host C++ code instead of -O3.
-# Note: CUDA device kernels still use a safe numeric level; use extra -Xcompiler if you also want it for nvcc host part.
+# Use -Os (optimize for size) on host C++ code (nvcc still gets a numeric level like -O2).
+# Note: CUDA device kernels use numeric level only; add -Xcompiler=-Os if you also want it for nvcc's host part.
 make build CMAKE_ARGS="-DSGL_KERNEL_OPT_LEVEL=s"
 
 # Or combine multiple:

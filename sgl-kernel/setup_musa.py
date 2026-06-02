@@ -108,7 +108,7 @@ if mtgpu_target not in ["mp_22", "mp_31"]:
     )
     sys.exit(1)
 
-opt_level = os.environ.get("SGL_KERNEL_OPT_LEVEL", "3")
+opt_level = os.environ.get("SGL_KERNEL_OPT_LEVEL", "1")
 mcc_flags = [
     "-DNDEBUG",
     f"-DOPERATOR_NAMESPACE={operator_namespace}",
