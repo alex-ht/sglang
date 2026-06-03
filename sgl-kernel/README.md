@@ -34,15 +34,20 @@ make build
 
 ### Limit build resource usage (CPU / parallelism)
 
+**THIS TREE IS HARD FORCED TO H100 ONLY.**
+
+- All builds (make, uv, docker, pip) produce kernels that support **only H100 / Hopper (SM90 + SM90a)**.
+- Pre-Hopper (sm80/86/87/89) and Blackwell (sm100/103/110/120/...) gencodes are **permanently removed**.
+- The separate sm100/ "precise" variant is never built.
+- Any attempt to pass `-DENABLE_BELOW_SM90=...`, `-DSGL_KERNEL_ENABLE_SM100A=...`, `-DSGL_KERNEL_BUILD_SM100_VARIANT=...` (via `CMAKE_ARGS`, env, make vars, etc.) is stripped and overridden at configure time. There is no way to produce a multi-arch or non-H100 binary from this source tree.
+
 By default, `make build` (and wheel builds) uses the most memory-efficient settings:
 - 1 parallel job (`MAX_JOBS=1`, `CMAKE_BUILD_PARALLEL_LEVEL=1`)
 - `SGL_KERNEL_COMPILE_THREADS=1` (NVCC --threads)
 - Optimization level `-O1` (via `SGL_KERNEL_OPT_LEVEL=1`; nvcc only accepts numeric levels)
-- Only H100/Hopper (SM90 + SM90a) gencodes; no pre-Hopper or Blackwell unless you opt in.
+- Only the two H100 gencodes (compute_90/sm_90 + compute_90a/sm_90a) + corresponding FA3 etc.
 
-This makes default compilation the least memory hungry.
-
-To build faster when you have sufficient host memory:
+To build faster when you have sufficient host memory (still H100 kernels only):
 
 ```bash
 # Use more parallelism
@@ -51,19 +56,16 @@ make build MAX_JOBS=8
 # Also raise NVCC threads (each nvcc can use more cores internally)
 make build MAX_JOBS=8 CMAKE_ARGS="-DSGL_KERNEL_COMPILE_THREADS=4"
 
-# To also enable support for older GPUs (sm80/sm89 etc):
-make build CMAKE_ARGS="-DENABLE_BELOW_SM90=ON"
-
-# To enable Blackwell (SM100+) support (will build extra variant + gencodes):
-make build CMAKE_ARGS="-DSGL_KERNEL_ENABLE_SM100A=ON -DSGL_KERNEL_BUILD_SM100_VARIANT=ON"
-
 # Use -Os (optimize for size) on host C++ code (nvcc still gets a numeric level like -O2).
 # Note: CUDA device kernels use numeric level only; add -Xcompiler=-Os if you also want it for nvcc's host part.
 make build CMAKE_ARGS="-DSGL_KERNEL_OPT_LEVEL=s"
 
-# Or combine multiple:
+# Or combine:
 make build MAX_JOBS=4 CMAKE_ARGS="-DSGL_KERNEL_OPT_LEVEL=s -DSGL_KERNEL_COMPILE_THREADS=2"
 ```
+
+At runtime `import sgl_kernel` will hard-fail (with a clear message) if a non-Hopper GPU is detected.
+The Python wrappers for Blackwell-only ops (`es_sm100_*`) also raise immediately.
 
 ## Contribution
 

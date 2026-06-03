@@ -46,7 +46,11 @@ DIST_DIR="dist"
 mkdir -p "${DIST_DIR}"
 
 echo "----------------------------------------"
-echo "Build configuration"
+echo "Build configuration (H100-ONLY HARDENED)"
+echo "  This build FORCES support for H100 / SM90 only."
+echo "  Pre-Hopper and Blackwell gencodes, and the sm100 variant, are permanently disabled."
+echo "  No -DENABLE_BELOW_SM90, -DSGL_KERNEL_ENABLE_SM100A, or -DSGL_KERNEL_BUILD_SM100_VARIANT"
+echo "  (or equivalent) passed via CMAKE_ARGS / env can change this."
 echo "PYTHON_VERSION: ${PYTHON_VERSION}"
 echo "CUDA_VERSION:   ${CUDA_VERSION}"
 echo "ARCH:           ${ARCH}"
@@ -139,8 +143,14 @@ else
   export CMAKE_BUILD_PARALLEL_LEVEL=$(echo "$(( $(nproc) * 2 / 3 )) 64" | awk "{print (\$1 < \$2) ? \$1 : \$2}")
 fi
 
-export CMAKE_ARGS="${CMAKE_ARGS:-} -DSGL_KERNEL_COMPILE_THREADS=${NVCC_THREADS}"
+# H100-only hardening: force the arch options OFF and strip any user-supplied attempts
+# to enable other GPU architectures. This cannot be bypassed from the outside.
+if [ -n "${CMAKE_ARGS}" ]; then
+  CMAKE_ARGS=$(echo "${CMAKE_ARGS}" | sed -E 's/-D(ENABLE_BELOW_SM90|SGL_KERNEL_ENABLE_SM100A|SGL_KERNEL_BUILD_SM100_VARIANT)=[^ ]*//g' | sed -E 's/[[:space:]]+/ /g')
+fi
+export CMAKE_ARGS="${CMAKE_ARGS:-} -DSGL_KERNEL_COMPILE_THREADS=${NVCC_THREADS} -DENABLE_BELOW_SM90=OFF -DSGL_KERNEL_ENABLE_SM100A=OFF -DSGL_KERNEL_BUILD_SM100_VARIANT=OFF"
 echo "Build parallelism: CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}, NVCC_THREADS=${NVCC_THREADS}"
+echo "Effective CMAKE_ARGS (arch options forced H100-only): ${CMAKE_ARGS}"
 
 ${PYTHON_ROOT_PATH}/bin/python -m uv build --wheel -Cbuild-dir=build . --color=always --no-build-isolation
 PYTHON=${PYTHON_ROOT_PATH}/bin/python ./rename_wheels.sh

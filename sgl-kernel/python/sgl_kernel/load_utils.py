@@ -46,26 +46,33 @@ def _filter_compiled_extensions(file_list):
 
 
 def _load_architecture_specific_ops():
-    """Load the appropriate common_ops library based on GPU architecture."""
+    """Load the common_ops library.
+    THIS BUILD IS HARD FORCED TO H100 ONLY (SM90).
+    """
     compute_capability = _get_compute_capability()
     logger.debug(
         f"[sgl_kernel] GPU Detection: compute_capability = {compute_capability}"
     )
 
+    # H100-only hardened enforcement: refuse to even attempt load on non-Hopper GPUs.
+    # This cannot be bypassed by environment variables or build flags.
+    if compute_capability is not None and compute_capability != 90:
+        raise RuntimeError(
+            f"[sgl_kernel] FATAL: This sgl-kernel installation was compiled EXCLUSIVELY for H100 / Hopper "
+            f"(compute capability 90). Other NVIDIA GPU architectures are not supported and there is no "
+            f"build-time or runtime switch to enable them.\n"
+            f"Detected GPU compute capability: {compute_capability}.\n"
+            f"If you need support for other GPUs you must use a different (non-hardened) build of sgl-kernel."
+        )
+
     # Get the directory where sgl_kernel is installed
     sgl_kernel_dir = Path(__file__).parent
     logger.debug(f"[sgl_kernel] sgl_kernel directory: {sgl_kernel_dir}")
 
-    # Determine which version to load based on GPU architecture
-    if compute_capability == 90:
-        ops_subdir = "sm90"
-        variant_name = "SM90 (Hopper/H100 with fast math optimization)"
-    elif compute_capability is not None:
-        ops_subdir = "sm100"
-        variant_name = f"SM{compute_capability} (precise math for compatibility)"
-    else:
-        ops_subdir = "sm100"
-        variant_name = "CPU/No GPU detected (using precise math)"
+    # H100-only: we ONLY ever build and ship the sm90/ variant (fast math for Hopper).
+    # sm100/ subdirectory is never produced by this hardened build.
+    ops_subdir = "sm90"
+    variant_name = "SM90 (Hopper/H100 - H100-only hardened build)"
 
     # Look for the compiled module with any valid extension
 
@@ -112,6 +119,8 @@ def _load_architecture_specific_ops():
         )
 
     # Try alternative directory (in case installation structure differs)
+    # In the H100-only hardened build we only ever install to sm90/, so this is mostly for
+    # old wheel layouts or editable installs that may have put it at top level.
     alt_pattern = str(sgl_kernel_dir / "common_ops.*")
     raw_alt_files = glob.glob(alt_pattern)
     alt_matching_files = _filter_compiled_extensions(raw_alt_files)
@@ -167,15 +176,16 @@ def _load_architecture_specific_ops():
 
     # All attempts failed
     cuda_version = torch.version.cuda
-    if cuda_version and cuda_version.startswith("13"):
-        install_hint = (
-            "pip install sglang-kernel --index-url https://docs.sglang.ai/whl/cu130/"
-        )
-    else:
-        install_hint = "pip install --upgrade sglang-kernel"
+    install_hint = (
+        "This is a H100-only hardened build of sgl-kernel. "
+        "Only wheels / builds produced with the forced H100-only configuration will work. "
+        "If you are building from source, no combination of CMAKE_ARGS / env vars can enable other GPUs."
+    )
 
     error_msg = f"""
 [sgl_kernel] CRITICAL: Could not load any common_ops library!
+
+This sgl-kernel build is HARD FORCED to H100 (SM90) only.
 
 Attempted locations:
 1. Architecture-specific pattern: {ops_pattern} - found files: {matching_files}
@@ -187,7 +197,6 @@ GPU Info:
 - Expected variant: {variant_name}
 - CUDA version: {cuda_version}
 
-Please ensure sgl_kernel is properly installed with:
 {install_hint}
 
 Error details from previous import attempts:

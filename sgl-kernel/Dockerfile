@@ -23,7 +23,8 @@ ENV PYTHON_ROOT_PATH=/opt/python/${PYTHON_TAG}
 ENV PATH=/opt/cmake/bin:${PATH}
 ENV LD_LIBRARY_PATH=/lib64:${LD_LIBRARY_PATH}
 ENV NINJA_STATUS="[%f/%t %es] "
-ENV FLASHINFER_CUDA_ARCH_LIST="8.0 8.9 9.0a 10.0a 12.0a"
+# Flashinfer list restricted to Hopper only (H100-only hardened build).
+ENV FLASHINFER_CUDA_ARCH_LIST="9.0 9.0a"
 # CUDA headers path
 ENV CPLUS_INCLUDE_PATH=/usr/local/cuda/include/cccl${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}
 ENV C_INCLUDE_PATH=/usr/local/cuda/include/cccl${C_INCLUDE_PATH:+:${C_INCLUDE_PATH}}
@@ -100,8 +101,11 @@ ARG ARCH=x86_64
 ARG USE_CCACHE=1
 # Parallelism + opt knobs (override via --build-arg)
 #   BUILD_JOBS: number of parallel compilation units (ninja -j). Default 1 for minimal memory use.
-#   NVCC_THREADS: per-compilation-unit NVCC --threads (multi-arch PTXAS). Default 1 for minimal memory use.
-#   Note: SGL_KERNEL_OPT_LEVEL defaults to "1" (-O1) in CMake for lowest compile memory (nvcc only accepts numeric).
+#   NVCC_THREADS: per-compilation-unit NVCC --threads. Default 1 for minimal memory use.
+#   Note: SGL_KERNEL_OPT_LEVEL defaults to "1" (-O1) in CMake.
+#
+# ARCHITECTURE IS HARD FORCED TO H100-ONLY (SM90 + SM90a only).
+# Any attempt in BUILD_ARGS / CMAKE_ARGS to set ENABLE_BELOW_SM90 / SGL_KERNEL_ENABLE_SM100* is stripped and overridden.
 ARG BUILD_JOBS=1
 ARG NVCC_THREADS=1
 
@@ -132,13 +136,17 @@ RUN --mount=type=cache,id=sgl-kernel-ccache,target=/ccache \
     else \
       export CMAKE_BUILD_PARALLEL_LEVEL=$(echo "$(( $(nproc) * 2 / 3 )) 64" | awk '{print ($1 < $2) ? $1 : $2}'); \
     fi; \
-    export CMAKE_ARGS="${CMAKE_ARGS:-} -DSGL_KERNEL_COMPILE_THREADS=${NVCC_THREADS}"; \
+    # H100-only hardening: force arch options OFF and strip any attempts to enable other GPUs.
+    if [ -n "${CMAKE_ARGS}" ]; then \
+      CMAKE_ARGS=$(echo "${CMAKE_ARGS}" | sed -E 's/-D(ENABLE_BELOW_SM90|SGL_KERNEL_ENABLE_SM100A|SGL_KERNEL_BUILD_SM100_VARIANT)=[^ ]*//g' | sed -E 's/[[:space:]]+/ /g'); \
+    fi; \
+    export CMAKE_ARGS="${CMAKE_ARGS:-} -DSGL_KERNEL_COMPILE_THREADS=${NVCC_THREADS} -DENABLE_BELOW_SM90=OFF -DSGL_KERNEL_ENABLE_SM100A=OFF -DSGL_KERNEL_BUILD_SM100_VARIANT=OFF"; \
     if [ -n "${ENABLE_CMAKE_PROFILE:-}" ]; then \
       echo "CMake profiling enabled - will save to /sgl-kernel/cmake-profile.json"; \
       export CMAKE_ARGS="${CMAKE_ARGS} --profiling-output=/sgl-kernel/cmake-profile.json --profiling-format=google-trace"; \
     fi; \
     echo "Build parallelism: CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}, NVCC_THREADS=${NVCC_THREADS}"; \
-    echo "CMAKE_ARGS=${CMAKE_ARGS}"; \
+    echo "CMAKE_ARGS (H100-only forced): ${CMAKE_ARGS}"; \
     ${PYTHON_ROOT_PATH}/bin/python -m uv build --wheel -Cbuild-dir=build . --color=always --no-build-isolation; \
     ./rename_wheels.sh; \
     if [ -n "${ENABLE_BUILD_PROFILE:-}" ] && [ -f /sgl-kernel/build/.ninja_log ]; then \

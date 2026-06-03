@@ -130,15 +130,17 @@ if(CCACHE_FOUND AND ENABLE_CCACHE AND DEFINED ENV{CCACHE_DIR})
     set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "ccache")
 endif()
 
-# Configure gencode below SM90
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-    set(DEFAULT_ENABLE_BELOW_SM90 OFF)
-    message(STATUS "For aarch64, disable gencode below SM90 by default")
-else()
-    set(DEFAULT_ENABLE_BELOW_SM90 OFF)
-endif()
-
-option(ENABLE_BELOW_SM90 "Enable gencode below SM90 (for pre-Hopper GPUs; default OFF for H100-only / minimal memory build)" ${DEFAULT_ENABLE_BELOW_SM90})
+# ============================================================
+# H100-ONLY HARDENED BUILD
+# sgl-kernel is FORCED to support ONLY H100/Hopper (SM90 + SM90a gencodes).
+# No pre-Hopper (sm80/86/87/89), no Blackwell (sm100/103/110/120/121), no other arches.
+# The following are FORCED OFF and cannot be changed by -D, CMAKE_ARGS,
+# environment variables, cache, or any other external means.
+# All related if-branches and gencode additions have been removed.
+# ============================================================
+set(ENABLE_BELOW_SM90 OFF CACHE BOOL "FORCED OFF for H100-only build; external settings are ignored and have no effect" FORCE)
+set(SGL_KERNEL_ENABLE_SM100A OFF CACHE BOOL "FORCED OFF for H100-only build; external settings are ignored and have no effect" FORCE)
+set(SGL_KERNEL_BUILD_SM100_VARIANT OFF CACHE BOOL "FORCED OFF for H100-only build; external settings are ignored and have no effect" FORCE)
 
 include_directories(
     ${PROJECT_SOURCE_DIR}/include
@@ -202,8 +204,8 @@ option(SGL_KERNEL_ENABLE_FP8              "Enable FP8"              ON)
 option(SGL_KERNEL_ENABLE_FP4              "Enable FP4"              OFF)
 option(SGL_KERNEL_ENABLE_FA3              "Enable FA3"              OFF)
 option(SGL_KERNEL_ENABLE_SM90A            "Enable SM90A"            OFF)
-option(SGL_KERNEL_ENABLE_SM100A           "Enable SM100A (Blackwell gencodes and features; default OFF)"           OFF)
-option(SGL_KERNEL_BUILD_SM100_VARIANT "Build SM100+ variant (precise-math lib in sm100/ subdir). Default OFF to save build memory/time for H100-only. Auto-enabled if ENABLE_SM100A." OFF)
+# NOTE: SM100 / BELOW_SM90 options were removed. This build is hardcoded H100-only.
+# Any attempt to set them via -D / CMAKE_ARGS is ignored (see FORCE sets above).
 
 if (SGL_KERNEL_ENABLE_BF16)
     list(APPEND SGL_KERNEL_CUDA_FLAGS
@@ -219,45 +221,9 @@ if (SGL_KERNEL_ENABLE_FP8)
     )
 endif()
 
-if (ENABLE_BELOW_SM90)
-    list(APPEND SGL_KERNEL_CUDA_FLAGS
-        "-gencode=arch=compute_80,code=sm_80"
-        "-gencode=arch=compute_89,code=sm_89"
-    )
-    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-        list(APPEND SGL_KERNEL_CUDA_FLAGS
-            "-gencode=arch=compute_87,code=sm_87"
-        )
-    endif()
-
-endif()
-
-if (SGL_KERNEL_ENABLE_SM100A)
-    list(APPEND SGL_KERNEL_CUDA_FLAGS
-        "-gencode=arch=compute_100a,code=sm_100a"
-        "-gencode=arch=compute_120a,code=sm_120a"
-    )
-    # refer sm_121, sm_110 and sm_101 description  https://github.com/pytorch/pytorch/pull/156176
-    if ("${CUDA_VERSION}" VERSION_GREATER_EQUAL "13.0")
-        list(APPEND SGL_KERNEL_CUDA_FLAGS
-            "-gencode=arch=compute_103a,code=sm_103a"
-            "--compress-mode=size"
-        )
-        if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-            list(APPEND SGL_KERNEL_CUDA_FLAGS
-                "-gencode=arch=compute_110a,code=sm_110a"
-                "-gencode=arch=compute_121a,code=sm_121a"
-            )
-        endif()
-    else()
-        if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-            list(APPEND SGL_KERNEL_CUDA_FLAGS
-                "-gencode=arch=compute_101a,code=sm_101a"
-            )
-        endif()
-    endif()
-endif()
-
+# H100-only: only SM90 + SM90a gencodes are supported.
+# All other architectures (pre-Hopper / Blackwell) have been permanently removed
+# from the build. External flags cannot re-enable them.
 if ("${CUDA_VERSION}" VERSION_GREATER_EQUAL "12.4")
     set(SGL_KERNEL_ENABLE_FA3 ON)
     list(APPEND SGL_KERNEL_CUDA_FLAGS
@@ -339,13 +305,8 @@ set(SOURCES
     "${repo-flash-attention_SOURCE_DIR}/csrc/flash_attn/flash_sparse_api.cpp"
 )
 
-# Include SM100-specific expert specialization sources only when explicitly enabled (saves compile memory for H100-only builds)
-if (SGL_KERNEL_ENABLE_SM100A)
-    list(APPEND SOURCES
-        "csrc/expert_specialization/es_sm100_mxfp8_blockscaled.cu"
-        "csrc/expert_specialization/es_sm100_mxfp8_blockscaled_group_quant.cu"
-    )
-endif()
+# H100-only build: SM100 expert specialization sources are deliberately excluded.
+# (They are only for Blackwell and would require different gencodes + separate variant.)
 
 set(INCLUDES
     ${repo-cutlass_SOURCE_DIR}/include
@@ -372,22 +333,9 @@ set_target_properties(common_ops_sm90_build PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sm90"
 )
 
-# =========================== Common SM100+ Build ============================= #
-# Build SM100+ library with precise math (same namespace, different directory).
-# Only built if SGL_KERNEL_BUILD_SM100_VARIANT or SGL_KERNEL_ENABLE_SM100A (default OFF to keep H100-only build memory-efficient).
-if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
-    Python_add_library(common_ops_sm100_build MODULE USE_SABI ${SKBUILD_SABI_VERSION} WITH_SOABI ${SOURCES})
-
-    target_compile_options(common_ops_sm100_build PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:${SGL_KERNEL_CUDA_FLAGS}>
-    )
-    target_include_directories(common_ops_sm100_build PRIVATE ${INCLUDES})
-    # Set output name and separate build directory to avoid conflicts
-    set_target_properties(common_ops_sm100_build PROPERTIES
-        OUTPUT_NAME "common_ops"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sm100"
-    )
-endif()
+# H100-only: Only the SM90 (fast-math) variant is built.
+# The separate "precise math" SM100+ variant build has been removed entirely.
+# Only sgl_kernel/sm90/common_ops will be produced and installed.
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 execute_process(
@@ -415,9 +363,7 @@ add_subdirectory(
 )
 
 target_link_libraries(common_ops_sm90_build PRIVATE ${TORCH_LIBRARIES} c10 cuda cublas cublasLt mscclpp_static)
-if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
-    target_link_libraries(common_ops_sm100_build PRIVATE ${TORCH_LIBRARIES} c10 cuda cublas cublasLt mscclpp_static)
-endif()
+# (SM100 variant linking removed - H100-only build)
 
 # sparse flash attention
 target_compile_definitions(common_ops_sm90_build PRIVATE
@@ -425,21 +371,9 @@ target_compile_definitions(common_ops_sm90_build PRIVATE
     FLASHATTENTION_DISABLE_DROPOUT
     FLASHATTENTION_DISABLE_UNEVEN_K
 )
-if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
-    target_compile_definitions(common_ops_sm100_build PRIVATE
-        FLASHATTENTION_DISABLE_BACKWARD
-        FLASHATTENTION_DISABLE_DROPOUT
-        FLASHATTENTION_DISABLE_UNEVEN_K
-    )
-endif()
 
-# Install to different subdirectories
-# CMake will find the built libraries in their respective LIBRARY_OUTPUT_DIRECTORY locations
-# and install them to the specified destinations
+# Install only the SM90 variant (H100-only).
 install(TARGETS common_ops_sm90_build LIBRARY DESTINATION sgl_kernel/sm90)
-if (SGL_KERNEL_BUILD_SM100_VARIANT OR SGL_KERNEL_ENABLE_SM100A)
-    install(TARGETS common_ops_sm100_build LIBRARY DESTINATION sgl_kernel/sm100)
-endif()
 
 # ============================ Optional Install: FA3 ============================= #
 # set flash-attention sources file
@@ -468,15 +402,9 @@ if (SGL_KERNEL_ENABLE_FA3)
         "-Xcompiler=-fno-strict-aliasing"
     )
 
-    if (ENABLE_BELOW_SM90)
-        list(APPEND SGL_FLASH_KERNEL_CUDA_FLAGS
-            "-gencode=arch=compute_80,code=sm_80"
-            "-gencode=arch=compute_86,code=sm_86"
-        )
-        # SM8X Logic
-        file(GLOB FA3_SM8X_GEN_SRCS
-            "${repo-flash-attention_SOURCE_DIR}/hopper/instantiations/flash_fwd_hdim*_sm80.cu")
-    endif()
+    # H100-only: FA3 is built only for sm90a. Pre-Hopper (sm80/sm86) sources and gencodes
+    # have been removed and cannot be re-enabled.
+    # (No SM8X GLOB, no extra gencodes here.)
 
     file(GLOB FA3_BF16_GEN_SRCS
         "${repo-flash-attention_SOURCE_DIR}/hopper/instantiations/flash_fwd_hdim[0-9]*_bf16*_sm90.cu")
@@ -526,9 +454,8 @@ if (SGL_KERNEL_ENABLE_FA3)
         FLASHATTENTION_VARLEN_ONLY
     )
 
-    if(NOT ENABLE_BELOW_SM90)
-        list(APPEND FLASH_OPS_COMPILE_DEFS FLASHATTENTION_DISABLE_SM8x)
-    endif()
+    # H100-only: always disable SM8x paths (no pre-Hopper support possible).
+    list(APPEND FLASH_OPS_COMPILE_DEFS FLASHATTENTION_DISABLE_SM8x)
     target_compile_definitions(flash_ops PRIVATE ${FLASH_OPS_COMPILE_DEFS})
 endif()
 

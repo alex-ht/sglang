@@ -36,11 +36,9 @@ TORCH_LIBRARY_FRAGMENT(sgl_kernel, m) {
       "-> Tensor[]");
   m.impl("fwd_kvcache_mla", torch::kCUDA, &fwd_kvcache_mla);
 
-  m.def(
-      "dense_prefill_fwd(Tensor workspace_buffer, Tensor q, Tensor k, Tensor v, Tensor cumulative_seqlen_q, Tensor "
-      "cumulative_seqlen_kv, Tensor o, Tensor lse, int mask_mode_code, float softmax_scale, int max_seqlen_q, int "
-      "max_seqlen_kv, bool is_varlen) -> ()");
-  m.impl("dense_prefill_fwd", torch::kCUDA, &FMHACutlassSM100FwdRun);
+  // "dense_prefill_fwd" (SM100/Blackwell Cutlass path) removed.
+  // This sgl-kernel is hardcoded H100-only; only Hopper FlashMLA paths remain.
+  // (The symbol FMHACutlassSM100FwdRun is not linked in this build.)
 
   m.def("sparse_prefill_fwd(Tensor q, Tensor kv, Tensor indices, float sm_scale, int d_v) -> Tensor[]");
   m.impl("sparse_prefill_fwd", torch::kCUDA, &sparse_prefill_fwd);

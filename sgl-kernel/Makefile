@@ -3,10 +3,17 @@
 # ---------------------------
 # Build resource controls
 # ---------------------------
-# Default is deliberately conservative (1 job + -O1) to be the most memory-efficient for compilation.
-# H100-only by default (no pre-Hopper or Blackwell gencodes unless explicitly enabled).
-# Override for faster builds if you have lots of host RAM:
-#   make build MAX_JOBS=8 CMAKE_BUILD_PARALLEL_LEVEL=8 CMAKE_ARGS="-DSGL_KERNEL_COMPILE_THREADS=4 -DSGL_KERNEL_OPT_LEVEL=3"  # restore full -O3 if you have RAM
+# H100-ONLY HARDENED BUILD.
+# This sgl-kernel is *forced* at CMake level and in all build scripts to support
+# ONLY H100 (SM90 + SM90a). Pre-Hopper and Blackwell architectures are permanently
+# disabled. Setting ENABLE_BELOW_SM90, SGL_KERNEL_ENABLE_SM100A, or
+# SGL_KERNEL_BUILD_SM100_VARIANT via CMAKE_ARGS, environment, or make variables
+# has no effect (they are stripped + FORCE OFF).
+#
+# Default is deliberately conservative (1 job + -O1) ...
+# You can still tune parallelism / opt level:
+#   make build MAX_JOBS=8 CMAKE_BUILD_PARALLEL_LEVEL=8 CMAKE_ARGS="-DSGL_KERNEL_COMPILE_THREADS=4 -DSGL_KERNEL_OPT_LEVEL=3"
+#   (arch -D* flags are stripped/ignored; this tree only produces H100 kernels)
 NPROC ?= $(shell nproc 2>/dev/null || echo 1)
 MAX_JOBS ?= 1
 CMAKE_BUILD_PARALLEL_LEVEL ?= $(MAX_JOBS)
@@ -42,7 +49,7 @@ build: install-deps submodule ## Build and install wheel package
 		CMAKE_POLICY_VERSION_MINIMUM=$(CMAKE_POLICY_VERSION_MINIMUM) \
 		MAX_JOBS=$(MAX_JOBS) \
 		CMAKE_BUILD_PARALLEL_LEVEL=$(CMAKE_BUILD_PARALLEL_LEVEL) \
-		CMAKE_ARGS="$(CMAKE_ARGS)" \
+		CMAKE_ARGS="$(CMAKE_ARGS) -DENABLE_BELOW_SM90=OFF -DSGL_KERNEL_ENABLE_SM100A=OFF -DSGL_KERNEL_BUILD_SM100_VARIANT=OFF" \
 		uv build --wheel -Cbuild-dir=$(UV_BUILD_DIR) . --verbose --color=always --no-build-isolation && \
 		pip3 install dist/*whl --force-reinstall --no-deps
 

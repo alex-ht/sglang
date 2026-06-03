@@ -764,26 +764,11 @@ void es_fp8_blockwise_scaled_grouped_mm(
     const torch::Tensor& expert_offsets,
     const torch::Tensor& workspace);
 
-void es_sm100_mxfp8_blockscaled_grouped_mm(
-    const torch::Tensor& a,
-    const torch::Tensor& b,
-    const torch::Tensor& sfa,
-    const torch::Tensor& sfb,
-    torch::Tensor& d,
-    const torch::Tensor& problem_sizes,
-    const torch::Tensor& expert_offsets,
-    const torch::Tensor& blockscale_offsets);
-
-void es_sm100_mxfp8_blockscaled_grouped_quant(
-    const torch::Tensor& input,
-    const torch::Tensor& problem_sizes,
-    const torch::Tensor& expert_offsets,
-    const torch::Tensor& blockscale_offsets,
-    torch::Tensor& quant_output,
-    torch::Tensor& scale_factor);
-
 /*
  * From flashmla
+ *
+ * Note: es_sm100_* and FMHACutlassSM100FwdRun (Blackwell-only) declarations
+ * have been removed. This header is part of a H100-only hardened sgl-kernel build.
  */
 std::vector<at::Tensor> get_mla_decoding_metadata(
     at::Tensor& seqlens_k,
@@ -808,20 +793,7 @@ std::vector<at::Tensor> fwd_kvcache_mla(
     const std::optional<at::Tensor>& indices  // None, or batch_size x seqlen_q x topk
 );
 
-void FMHACutlassSM100FwdRun(
-    at::Tensor workspace_buffer,
-    at::Tensor q,
-    at::Tensor k,
-    at::Tensor v,
-    at::Tensor cumulative_seqlen_q,
-    at::Tensor cumulative_seqlen_kv,
-    at::Tensor o,
-    at::Tensor lse,
-    int64_t mask_mode_code,
-    double softmax_scale,
-    int64_t max_seqlen_q,
-    int64_t max_seqlen_kv,
-    bool is_varlen);
+// (FMHACutlassSM100FwdRun removed - was SM100/Blackwell only. H100-only build.)
 
 std::vector<at::Tensor>
 sparse_prefill_fwd(const at::Tensor& q, const at::Tensor& kv, const at::Tensor& indices, double sm_scale, int64_t d_v);
